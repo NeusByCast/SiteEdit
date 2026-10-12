@@ -1,0 +1,14 @@
+{
+  "name": "siteedit",
+  "version": "1.0.0",
+  "description": "SiteEdit - visually customize any website (Chrome MV3 extension)",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "puppeteer": "^25.13.0"
+  },
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SiteEdit · Manager</title>
+  <link rel="stylesheet" href="../ui/theme.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="brand">
+      <div class="logo">S</div>
+      <div><div class="title">SiteEdit Manager</div><div class="sub">All customizations are stored locally in this browser.</div></div>
+    </header>
+    <section class="card toolbar">
+      <button id="export" class="primary">Export all (JSON)</button>
+      <label class="btn"><input id="file" type="file" accept="application/json,.json" hidden>Import JSON…</label>
+      <label class="check"><input id="replace" type="checkbox"> Replace existing site rules instead of merging</label>
+    </section>
+    <p id="status" class="status" role="status"></p>
+    <section class="card">
+      <table>
+        <thead><tr><th>Site</th><th>Elements</th><th>Last change</th><th></th></tr></thead>
+        <tbody id="sites"></tbody>
+      </table>
+      <p id="empty" class="empty" hidden>No customizations yet. Open any website, press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> and start editing.</p>
+    </section>
+  </div>
+  <script src="../lib/core.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

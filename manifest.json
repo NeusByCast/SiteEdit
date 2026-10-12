@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "SiteEdit",
+  "short_name": "SiteEdit",
+  "version": "1.0.0",
+  "description": "Visually customize any website without code. Changes are saved per site and restored automatically.",
+  "minimum_chrome_version": "111",
+  "icons": { "16": "src/icons/icon16.png", "48": "src/icons/icon48.png", "128": "src/icons/icon128.png" },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "background": { "service_worker": "src/background.js" },
+  "action": {
+    "default_title": "SiteEdit",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": { "16": "src/icons/icon16.png", "48": "src/icons/icon48.png" }
+  },
+  "options_ui": { "page": "src/options/options.html", "open_in_tab": true },
+  "commands": {
+    "toggle-editor": {
+      "suggested_key": { "default": "Alt+Shift+E" },
+      "description": "Toggle the SiteEdit panel on the current page"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/lib/core.js", "src/content/restore.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  }
+}

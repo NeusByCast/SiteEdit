@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SiteEdit</title>
+  <link rel="stylesheet" href="../ui/theme.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="brand">
+    <div class="logo">S</div>
+    <div>
+      <div class="title">SiteEdit</div>
+      <div class="sub" id="host">—</div>
+    </div>
+  </header>
+  <main>
+    <button id="toggle" class="primary">Open editor on this page</button>
+    <p class="kbd-hint">Shortcut: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></p>
+    <section class="card">
+      <div class="stat"><span id="count">0</span> customized element(s) on this site</div>
+      <div class="grid">
+        <button id="export">Export site</button>
+        <button id="reset" class="danger">Reset site</button>
+      </div>
+    </section>
+    <button id="manage" class="link">Manage all sites · Import / Export…</button>
+    <p id="status" class="status" role="status"></p>
+  </main>
+  <script src="../lib/core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

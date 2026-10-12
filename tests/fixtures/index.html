@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SiteEdit test page</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: rgb(20, 20, 20); background: #fff; }
+    .card { border: 1px solid #ccc; padding: 10px; margin: 8px 0; }
+    .item { padding: 4px; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Hello SiteEdit</h1>
+  <p class="intro">Intro paragraph</p>
+  <div class="card"><span class="label">First card</span><button id="btn" onclick="window.__clicked = (window.__clicked||0)+1">Click me</button></div>
+  <div class="card"><span class="label">Second card</span></div>
+  <ul id="list"></ul>
+  <div id="slot"></div>
+  <script>
+    // Dynamic content: list items rendered after load, and a late banner.
+    setTimeout(() => {
+      const list = document.getElementById('list');
+      for (let i = 1; i <= 3; i++) { const li = document.createElement('li'); li.className = 'item'; li.textContent = 'Item ' + i; list.append(li); }
+    }, 200);
+    setTimeout(() => {
+      const b = document.createElement('div'); b.id = 'late-banner'; b.textContent = 'Late banner'; document.getElementById('slot').append(b);
+    }, 700);
+    // Simulate a framework that resets adopted stylesheets after hydration.
+    setTimeout(() => { document.adoptedStyleSheets = []; document.body.append(document.createElement('i')); }, 900);
+  </script>
+</body>
+</html>
