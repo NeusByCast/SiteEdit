@@ -29,7 +29,9 @@ Chrome Manifest V3 · no dependencies at runtime · no network access · no remo
 
 ## Install (unpacked)
 
-1. Clone or download this repository.
+**Easiest:** download `SiteEdit.zip` from the [latest release](https://github.com/NeusByCast/SiteEdit/releases/latest) and unzip it.
+
+1. Download and unzip `SiteEdit.zip` from [Releases](https://github.com/NeusByCast/SiteEdit/releases), or clone this repository.
 2. Open `chrome://extensions`, enable **Developer mode**.
 3. Click **Load unpacked** and select the project folder (the one containing `manifest.json`).
 4. Optional: pin SiteEdit to the toolbar.
