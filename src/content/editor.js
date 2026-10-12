@@ -21,7 +21,7 @@
 
   // ---------- robust selector generation ----------
   const STABLE_ATTRS = ['data-testid', 'data-test', 'data-qa', 'data-cy', 'data-id', 'name', 'aria-label'];
-  const looksGenerated = (s) => /\d{4,}|^[0-9]|[a-f0-9]{8,}|^(css|sc|jsx|emotion)-|__[a-z0-9]{5,}$/i.test(s);
+  const looksGenerated = Core.looksGenerated;
   const STATE_CLASS = /^(is-|has-)?(active|hover|focus|focused|selected|open|opened|visible|hidden|show|current|disabled|loading)$/i;
   const esc = (s) => CSS.escape(s);
   const isUnique = (sel, el) => { try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === el; } catch (_) { return false; } };
@@ -280,7 +280,11 @@
     const v = String(value || '').trim();
     const rule = { ...(working[sel] || {}) };
     if (!v) delete rule[prop];
-    else {
+    else if (prop === 'display' && Core.isProtectedSelector(sel)) {
+      say('The whole page (html / body) cannot be hidden.', 'err');
+      if (commit) syncControls();
+      return;
+    } else {
       const ok = Core.validateValue(prop, v);
       if (ok === null) {
         if (!lenient) say(`“${v}” is not a valid ${prop} value.`, 'err');
@@ -302,10 +306,17 @@
     persist(working);
   }
 
+  const countDecls = (r) => Object.values(r).reduce((n, d) => n + Object.keys(d).length, 0);
   function persist(rules) {
-    committed = clone(rules);
-    working = clone(rules);
-    RT.save(committed).catch((e) => say('Could not save: ' + e.message, 'err'));
+    // Keep exactly what is stored: the same sanitizer RT.save applies.
+    const clean = Core.sanitizeRules(rules);
+    const dropped = countDecls(rules) - countDecls(clean);
+    committed = clone(clean);
+    working = clone(clean);
+    RT.save(clean).then((saved) => {
+      if (saved && JSON.stringify(saved) !== JSON.stringify(committed)) { committed = clone(saved); working = clone(saved); syncControls(); }
+    }, (e) => say('Could not save: ' + e.message, 'err'));
+    if (dropped > 0) say(`${dropped} invalid style value(s) could not be saved and were discarded.`, 'err');
     syncControls();
   }
 
@@ -346,8 +357,16 @@
   function refreshSelBox() { placeBox(selBox, selected && selected.el, selected ? describe(selected.el || document.body) : ''); }
 
   function select(el) {
-    const selector = selectorFor(el);
-    if (!selector) { say('Could not build a selector for that element.', 'err'); return; }
+    const raw = selectorFor(el);
+    const selector = raw && Core.validateSelector(raw);
+    if (!selector) {
+      selected = null;
+      selInfo.textContent = 'This element cannot be edited: no safe CSS selector could be built for it.';
+      selInfo.classList.add('empty');
+      say('Could not build a valid selector for that element. Try its parent instead.', 'err');
+      syncControls();
+      return;
+    }
     selected = { el, selector };
     selInfo.textContent = selector; selInfo.classList.remove('empty');
     syncControls();

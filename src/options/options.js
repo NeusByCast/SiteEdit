@@ -27,7 +27,9 @@
       const td = document.createElement('td');
       const del = document.createElement('button');
       del.className = 'danger'; del.textContent = 'Delete'; del.dataset.host = host;
-      del.addEventListener('click', async () => { await chrome.storage.local.remove(Core.keyFor(host)); say(`Removed ${host}`, 'ok'); });
+      del.addEventListener('click', async () => {
+        if (!confirm(`Delete all SiteEdit customizations for ${host}? This cannot be undone.`)) return;
+        await chrome.storage.local.remove(Core.keyFor(host)); say(`Removed ${host}`, 'ok'); });
       td.append(del); tr.append(td);
       return tr;
     }));

@@ -85,6 +85,7 @@
         await chrome.storage.local.remove(key);
       }
       render();
+      return clean;
     },
     onDomChange(fn) { listeners.add(fn); updateObserver(); return () => { listeners.delete(fn); updateObserver(); }; }
   });

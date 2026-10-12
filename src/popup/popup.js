@@ -37,6 +37,7 @@
     a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
     a.download = `siteedit-${host}.json`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     say('Exported', 'ok');
   });
   let armed = false;

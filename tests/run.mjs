@@ -151,7 +151,7 @@ try {
   await test('undo / redo', async () => {
     const before = await state();
     await action('undo');
-    assert.equal(await css('#title', 'border-top-style'), 'none', 'border-style undone');
+    assert.equal(await css('#title', 'border-top-style'), 'solid', 'border-style undone (width alone renders solid)');
     await action('undo');
     assert.equal(await css('#title', 'border-top-width'), '0px');
     await action('redo');
@@ -163,9 +163,44 @@ try {
     const btn = await page.waitForSelector('siteedit-panel >>> button[data-action="undo"]');
     await btn.focus();
     await page.keyboard.down('Control'); await page.keyboard.press('z'); await page.keyboard.up('Control'); await sleep(150);
-    assert.equal(await css('#title', 'border-top-style'), 'none');
+    assert.equal(await css('#title', 'border-top-style'), 'solid');
     await page.keyboard.down('Control'); await page.keyboard.down('Shift'); await page.keyboard.press('z'); await page.keyboard.up('Shift'); await page.keyboard.up('Control'); await sleep(150);
     assert.equal(await css('#title', 'border-top-style'), 'dashed');
+  });
+
+  await test('element without id: child-combinator selector is saved and applied', async () => {
+    await pick('aside.learn header');
+    const sel = (await state()).selector;
+    assert.ok(sel.includes('>') && !sel.includes('#'), 'selector: ' + sel);
+    await setColor('color', '#ff00ff');
+    await setField('border-width', '2');
+    assert.equal(await css('aside.learn header', 'color'), 'rgb(255, 0, 255)');
+    assert.equal(await css('aside.learn header', 'border-top-style'), 'solid', 'width alone gets a solid border');
+    assert.equal(await css('aside.learn header', 'border-top-width'), '2px');
+    const s = await stored();
+    assert.equal(s.rules[sel].color, '#ff00ff');
+    assert.deepEqual((await state()).committed[sel], s.rules[sel], 'committed matches storage');
+  });
+
+  await test('hashed class names (styled-components / CSS modules) are skipped', async () => {
+    await pick('.rows > div:nth-of-type(2) > b');
+    const sel = (await state()).selector;
+    assert.ok(!/kOSbdU|topRow|Header_title/.test(sel), 'selector: ' + sel);
+    assert.match(sel, /nth-of-type\(2\)/);
+    assert.equal(await page.$$eval(sel, (els) => els.length), 1);
+    assert.equal(await page.$eval(sel, (e) => e.textContent), 'Row B');
+    await setField('font-size', '22');
+    assert.equal(await css('.rows > div:nth-of-type(2) > b', 'font-size'), '22px');
+    assert.notEqual(await css('.rows > div:nth-of-type(1) > b', 'font-size'), '22px');
+  });
+
+  await test('html / body cannot be hidden', async () => {
+    await iso('() => globalThis.__siteEditEditor._test.select(document.body)');
+    await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('[data-prop="display"]').click());
+    await sleep(200);
+    assert.equal(await css('body', 'display'), 'block');
+    assert.match(await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('.status').textContent), /cannot be hidden/);
+    assert.ok(!((await stored()).rules.body || {}).display);
   });
 
   await test('hide element (visibility)', async () => {
@@ -247,6 +282,14 @@ try {
     assert.equal(n, 1);
     await sleep(200);
     assert.equal(await mgr.$$eval('#sites tr', (r) => r.length), 2);
+    // Delete asks for confirmation: dismissing keeps the site, accepting removes it.
+    let answer = false;
+    mgr.on('dialog', (d) => (answer ? d.accept() : d.dismiss()));
+    const del = () => mgr.$eval('#sites button[data-host="example.com"]', (b) => b.click());
+    await del(); await sleep(200);
+    assert.equal(await mgr.$$eval('#sites tr', (r) => r.length), 2, 'dismiss keeps the site');
+    answer = true; await del(); await sleep(300);
+    assert.equal(await mgr.$$eval('#sites tr', (r) => r.length), 1, 'accept deletes the site');
     const bad = await mgr.evaluate(() => globalThis.__siteEditManager.importText('{"nope":1}').then(() => 'ok', (e) => e.message));
     assert.match(bad, /Not a SiteEdit/);
     await mgr.close();

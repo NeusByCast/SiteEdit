@@ -20,7 +20,12 @@
   const PROP_SET = new Set(PROPERTIES);
   // Disallow anything that could escape a declaration or pull remote resources.
   const FORBIDDEN_VALUE = /[;{}<>\\]|\/\*|url\s*\(|image\s*\(|image-set|expression|javascript:|@import|!/i;
-  const FORBIDDEN_SELECTOR = /[{}<>;]|\/\*|@/;
+  // '>' (child combinator) is allowed: selectors only ever reach CSSStyleSheet.replaceSync, never
+  // HTML, and '{', '}' and ';' (the only ways to break out of a rule) stay forbidden.
+  const FORBIDDEN_SELECTOR = /[{};<]|\/\*|@/;
+  // Hiding these would blank the whole page and leave no way to reach the panel.
+  const PROTECTED_FROM_HIDING = new Set(['html', 'body', '*', ':root', 'html > body', 'html body']);
+  const isProtectedSelector = (sel) => PROTECTED_FROM_HIDING.has(String(sel).trim().toLowerCase().replace(/\s+/g, ' '));
 
   function cssSupports(prop, value) {
     try {
@@ -49,6 +54,23 @@
     return s;
   }
 
+  /** Heuristic for machine-generated class names / ids that change between builds. */
+  function looksGenerated(name) {
+    const s = String(name);
+    if (/\d{4,}|^[0-9]|[a-f0-9]{8,}|^(css|sc|jsx|emotion|svelte|astro)-/i.test(s)) return true;
+    // CSS modules: "topRow__-dqkhM", "Header_title__a1b2c", "styles_root__3xYz"
+    if (/__-|_-[A-Za-z0-9]/.test(s)) return true;
+    const m = s.match(/_([A-Za-z0-9-]{4,})$/);
+    if (m && /[0-9A-Z]/.test(m[1]) && /[a-z]/i.test(m[1])) return true;
+    // styled-components / emotion hashes: "kOSbdU", "bZQxLp", "hTzWlG" (random case mix, no words)
+    if (/^[A-Za-z]{5,10}$/.test(s)) {
+      const uppers = (s.match(/[A-Z]/g) || []).length;
+      const wordy = /^[a-z]+([A-Z][a-z]+)*$/.test(s) || /^([A-Z][a-z]+)+$/.test(s) || /^[A-Z]+$/.test(s) || /^[a-z]+$/.test(s);
+      if (uppers >= 2 && !wordy) return true;
+    }
+    return false;
+  }
+
   function validHostname(h) {
     return typeof h === 'string' && h.length > 0 && h.length <= 253 && /^[a-z0-9.\-:[\]_]+$/i.test(h);
   }
@@ -65,6 +87,7 @@
       if (!sel || !decls || typeof decls !== 'object' || Array.isArray(decls)) continue;
       const clean = {};
       for (const prop of Object.keys(decls)) {
+        if (prop === 'display' && isProtectedSelector(sel)) continue;
         const v = validateValue(prop, decls[prop]);
         if (v !== null) clean[prop] = v;
       }
@@ -105,7 +128,10 @@
     const clean = sanitizeRules(rules);
     let css = '';
     for (const sel of Object.keys(clean)) {
-      const decls = Object.entries(clean[sel]).map(([p, v]) => `${p}: ${v} !important;`).join(' ');
+      const rule = { ...clean[sel] };
+      // A width alone has no visible effect when the element has no border style.
+      if (rule['border-width'] && !rule['border-style']) rule['border-style'] = 'solid';
+      const decls = Object.entries(rule).map(([p, v]) => `${p}: ${v} !important;`).join(' ');
       css += `${sel} { ${decls} }\n`;
     }
     return css;
@@ -113,8 +139,9 @@
 
   root.SiteEditCore = Object.freeze({
     SCHEMA_VERSION, KEY_PREFIX, PROPERTIES,
+    looksGenerated,
     keyFor: (host) => KEY_PREFIX + String(host).toLowerCase(),
-    validateValue, validateSelector, validHostname, sanitizeRules, sanitizeSite,
+    validateValue, validateSelector, isProtectedSelector, validHostname, sanitizeRules, sanitizeSite,
     parseImport, buildExport, renderCSS
   });
 })(globalThis);
