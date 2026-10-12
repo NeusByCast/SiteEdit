@@ -161,6 +161,27 @@
     return runs.some((r) => !/(ng|th|ch|sh|ck|st|tr|nd|rt|ps|pt|ct|ll|ss|tt)/.test(r));
   }
 
+  /** camelCase / PascalCase hashes such as "GrFgy", "ldvJot", "bTzKq": short tokens split at
+   * capitals where a multi-letter segment has no vowel. Long readable names are left alone. */
+  function looksCamelHash(name) {
+    const s = String(name);
+    if (!/^[A-Za-z]{5,7}$/.test(s) || !/[A-Z]/.test(s.slice(1)) || !/[a-z]/.test(s)) return false;
+    const segs = s.split(/(?=[A-Z])/).filter((x) => x.length >= 2);
+    return segs.length >= 2 && segs.some((x) => !/[aeiouy]/i.test(x));
+  }
+
+  /** Scores a class for selector building: >0 means usable. `count` = uses in the document. */
+  function classScore(name, count) {
+    const s = String(name);
+    if (!s || s.length >= 40 || looksGenerated(s)) return -10;
+    let score = 1;
+    if (looksSuspicious(s) || looksCamelHash(s)) score -= 3;
+    if (count <= 1) score -= 2;              // single-use: positional steps are more stable
+    else if (count <= 100) score += 1;       // shared, component-like class
+    if (/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(s) && /[aeiou]/.test(s)) score += 1; // kebab/plain words
+    return score;
+  }
+
   function validHostname(h) {
     return typeof h === 'string' && h.length > 0 && h.length <= 253 && /^[a-z0-9.\-:[\]_]+$/i.test(h);
   }
@@ -229,7 +250,7 @@
 
   root.SiteEditCore = Object.freeze({
     SCHEMA_VERSION, KEY_PREFIX, PROPERTIES,
-    looksGenerated, looksSuspicious,
+    looksGenerated, looksSuspicious, looksCamelHash, classScore,
     keyFor: (host) => KEY_PREFIX + String(host).toLowerCase(),
     validateValue, validateSelector, isProtectedSelector, selectorTargetsRoot, isBlanking, matchesPageRoot, stripPageBlanking, validHostname, sanitizeRules, sanitizeSite,
     parseImport, buildExport, renderCSS

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SiteEdit",
   "short_name": "SiteEdit",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Visually customize any website without code. Changes are saved per site and restored automatically.",
   "minimum_chrome_version": "111",
   "icons": { "16": "src/icons/icon16.png", "48": "src/icons/icon48.png", "128": "src/icons/icon128.png" },

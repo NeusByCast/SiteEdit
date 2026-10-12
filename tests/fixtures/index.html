@@ -20,9 +20,19 @@
     <div class="kOSbdU topRow__-dqkhM"><b class="Header_title__a1b2c">Row A</b></div>
     <div class="kOSbdU topRow__-dqkhM"><b class="Header_title__a1b2c">Row B</b></div>
   </section>
+  <section class="feed"></section>
   <ul id="list"></ul>
   <div id="slot"></div>
   <script>
+    // Deeply nested, repeated cards (like news feeds): 4 identical cards, 15 levels deep.
+    (function () {
+      const feed = document.querySelector('.feed');
+      for (let c = 1; c <= 4; c++) {
+        let node = document.createElement('div'); node.className = 'promo GrFgy'; feed.append(node);
+        for (let d = 0; d < 14; d++) { const n = document.createElement('div'); n.className = d % 2 ? 'wrap ldvJot' : 'inner'; node.append(n); node = n; }
+        const h = document.createElement('h3'); h.className = 'headline'; h.textContent = 'Headline ' + c; node.append(h);
+      }
+    })();
     // Dynamic content: list items rendered after load, and a late banner.
     setTimeout(() => {
       const list = document.getElementById('list');

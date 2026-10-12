@@ -34,8 +34,13 @@
   function stableClasses(el) {
     // Conservative: drop hashed, suspicious-looking and single-use classes; the path then
     // falls back to tag + :nth-of-type, which survives class-name churn better.
-    return Array.from(el.classList).filter((c) => c.length < 40 && !looksGenerated(c) && !Core.looksSuspicious(c) &&
-      !STATE_CLASS.test(c) && !c.startsWith('siteedit') && document.getElementsByClassName(c).length > 1).slice(0, 2);
+    return Array.from(el.classList)
+      .filter((c) => !STATE_CLASS.test(c) && !c.startsWith('siteedit'))
+      .map((c) => ({ c, score: Core.classScore(c, document.getElementsByClassName(c).length) }))
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2)
+      .map((x) => x.c);
   }
 
   function selectorFor(el) {
@@ -52,28 +57,46 @@
         if (isUnique(sel, el)) return sel;
       }
     }
-    const parts = [];
-    let cur = el;
-    for (let depth = 0; cur && cur !== document.documentElement && depth < 12; depth++) {
-      const cid = depth > 0 && stableId(cur);
-      if (cid) { parts.unshift(cid); break; }
-      if (cur === document.body) { parts.unshift('body'); break; }
-      let part = cur.localName + stableClasses(cur).map((c) => '.' + esc(c)).join('');
-      const parent = cur.parentElement;
-      if (parent) {
-        const same = Array.from(parent.children).filter((s) => s.matches(part));
-        if (same.length > 1) {
-          const sameTag = Array.from(parent.children).filter((s) => s.localName === cur.localName);
-          part += `:nth-of-type(${sameTag.indexOf(cur) + 1})`;
-        }
-      }
-      parts.unshift(part);
-      const sel = parts.join(' > ');
-      if (isUnique(sel, el)) return sel;
-      cur = parent;
+    // Ancestor chain up to (not including) the nearest stable-id ancestor or <body>.
+    const chain = [];
+    let anchor = 'body';
+    for (let cur = el; cur && cur !== document.body && cur !== document.documentElement; cur = cur.parentElement) {
+      const cid = cur !== el && stableId(cur);
+      if (cid) { anchor = cid; break; }
+      chain.push(cur);
     }
-    const sel = parts.join(' > ');
-    return Core.validateSelector(sel);
+    const nth = (node) => {
+      const parent = node.parentElement;
+      if (!parent) return '';
+      const sameTag = Array.from(parent.children).filter((s) => s.localName === node.localName);
+      return sameTag.length > 1 ? `:nth-of-type(${sameTag.indexOf(node) + 1})` : '';
+    };
+    const step = (node, positional) => {
+      let part = node.localName + stableClasses(node).map((c) => '.' + esc(c)).join('');
+      if (positional) return part + nth(node);
+      const parent = node.parentElement;
+      if (parent && Array.from(parent.children).filter((s) => s !== node && s.matches(part)).length) part += nth(node);
+      return part;
+    };
+    // Pass 1: shortest suffix of descriptive steps that is unique.
+    const parts = [];
+    for (let i = 0; i < chain.length; i++) {
+      parts.unshift(step(chain[i], false));
+      const sel = parts.join(' > ');
+      if (isUnique(sel, el)) return Core.validateSelector(sel);
+    }
+    const anchored = [anchor, ...parts].join(' > ');
+    if (isUnique(anchored, el)) return Core.validateSelector(anchored);
+    // Pass 2: positional (:nth-of-type on every step) from the anchor; a full child path from a
+    // unique anchor is unique by construction. Shorten from the top while it stays unique.
+    const pos = chain.map((n) => step(n, true)).reverse();
+    let best = [anchor, ...pos].join(' > ');
+    for (let i = 1; i < pos.length; i++) {
+      const sel = pos.slice(i).join(' > ');
+      if (!isUnique(sel, el)) break;
+      best = sel;
+    }
+    return isUnique(best, el) ? Core.validateSelector(best) : null;
   }
 
   // ---------- UI ----------
@@ -109,19 +132,21 @@
     button.icon:hover { color: #fff; background: #2a2e3e; }
     .sel-info { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: #b7a8ff; background: #1a1d28; border: 1px solid #262a38; border-radius: 8px; padding: 6px 8px; margin-bottom: 10px; word-break: break-all; }
     .sel-info.empty { color: #7a8096; font-family: inherit; font-size: 12px; }
-    fieldset { border: 1px solid #262a38; border-radius: 10px; padding: 8px 10px 10px; margin: 0 0 8px; }
+    fieldset { min-width: 0; min-inline-size: 0; border: 1px solid #262a38; border-radius: 10px; padding: 8px 10px 10px; margin: 0 0 8px; }
     fieldset:disabled { opacity: .45; }
     legend { color: #8a90a6; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; padding: 0 4px; }
-    .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-    .row > label { width: 78px; flex: none; color: #b4b9cc; font-size: 12px; }
+    .row { display: flex; align-items: center; gap: 6px; margin-top: 6px; min-width: 0; }
+    .row > * { min-width: 0; }
+    .row > label, .row > input[type=color], .row > .clear, .row > input[type=checkbox] { flex: none; }
+    .row > label { width: 86px; flex: none; white-space: nowrap; color: #b4b9cc; font-size: 12px; }
     .row.mod > label::after { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22d3a6; margin-left: 5px; vertical-align: middle; }
-    input[type=text], input[type=number], select { flex: 1; min-width: 0; font: inherit; font-size: 12px; color: #e6e8ef; background: #12141b; border: 1px solid #2c3040; border-radius: 7px; padding: 5px 7px; }
+    input[type=text], input[type=number], select { flex: 1 1 0; min-width: 0; width: 0; font: inherit; font-size: 12px; color: #e6e8ef; background: #12141b; border: 1px solid #2c3040; border-radius: 7px; padding: 5px 7px; }
     select option { background: #12141b; }
     input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid #2c3040; border-radius: 7px; background: #12141b; cursor: pointer; }
     input[type=color]::-webkit-color-swatch-wrapper { padding: 3px; } input[type=color]::-webkit-color-swatch { border: 0; border-radius: 4px; }
     input[type=range] { flex: 1; accent-color: #7c5cff; }
     input[type=checkbox] { accent-color: #7c5cff; width: 15px; height: 15px; }
-    .clear { padding: 2px 7px; font-size: 12px; }
+    .clear { padding: 2px 6px; font-size: 13px; line-height: 1; }
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px; }
     .rules { margin-top: 10px; }
     .rules summary { cursor: pointer; color: #b4b9cc; font-size: 12px; }
@@ -362,6 +387,16 @@
   function select(el) {
     const raw = selectorFor(el);
     const selector = raw && Core.validateSelector(raw);
+    let matches = 0;
+    try { matches = selector ? document.querySelectorAll(selector).length : 0; } catch (_) { matches = 0; }
+    if (selector && matches !== 1) {
+      selected = null;
+      selInfo.textContent = `Selector matches ${matches} elements, so this element cannot be targeted on its own.`;
+      selInfo.classList.add('empty');
+      say('Could not build a unique selector for that element. Try its parent instead.', 'err');
+      syncControls();
+      return;
+    }
     if (!selector) {
       selected = null;
       selInfo.textContent = 'This element cannot be edited: no safe CSS selector could be built for it.';

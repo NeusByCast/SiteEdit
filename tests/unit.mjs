@@ -70,6 +70,19 @@ test('suspicious lowercase classes are flagged conservatively', () => {
   assert.equal(Core.looksGenerated('ssrcss-1q0x1qg-Promo'), true);
   for (const c of ['HeaderMktg', 'btn-primary', 'Button_primary', 'col-md-6', 'h-100']) assert.equal(Core.looksGenerated(c), false, c);
 });
+test('camelCase hashes are detected, readable camelCase is kept', () => {
+  for (const c of ['GrFgy', 'ldvJot', 'bTzKq', 'kxYvRp']) assert.equal(Core.looksCamelHash(c), true, c);
+  for (const c of ['navBar', 'isOpen', 'MainHeader', 'NavItem', 'topBar', 'HeaderMktg', 'promo', 'Card', 'myList']) assert.equal(Core.looksCamelHash(c), false, c);
+});
+test('class scoring prefers shared readable classes and rejects hashes / single-use', () => {
+  assert.ok(Core.classScore('card', 12) > 0);
+  assert.ok(Core.classScore('nav-item', 5) > 0);
+  assert.ok(Core.classScore('navBar', 3) > 0);
+  assert.ok(Core.classScore('card', 12) > Core.classScore('navBar', 3));
+  for (const [c, n] of [['GrFgy', 4], ['ldvJot', 30], ['kuhblz', 9], ['kOSbdU', 4], ['css-1abc2d', 4], ['learn', 1], ['x'.repeat(41), 3]]) {
+    assert.ok(Core.classScore(c, n) <= 0, c);
+  }
+});
 test('border width alone renders a solid border', () => {
   assert.match(Core.renderCSS({ p: { 'border-width': '3px' } }), /border-style: solid !important/);
   assert.doesNotMatch(Core.renderCSS({ p: { 'border-width': '3px', 'border-style': 'dashed' } }), /solid/);

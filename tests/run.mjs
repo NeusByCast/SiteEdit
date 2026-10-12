@@ -203,6 +203,43 @@ try {
     assert.ok(!((await stored()).rules.body || {}).display);
   });
 
+  await test('deep repeated cards: selector is unique and targets the picked card', async () => {
+    const target = '.feed > div:nth-of-type(3) h3';
+    await pick(target);
+    const sel = (await state()).selector;
+    assert.ok(sel, 'selected');
+    assert.equal(await page.$$eval(sel, (els) => els.length), 1, 'unique: ' + sel);
+    assert.equal(await page.$eval(sel, (e) => e.textContent), 'Headline 3');
+    assert.ok(!/GrFgy|ldvJot/.test(sel), 'camelCase hashes skipped: ' + sel);
+    await setColor('color', '#123456');
+    const colors = await page.$$eval('.feed h3', (hs) => hs.map((h) => getComputedStyle(h).color));
+    assert.deepEqual(colors.map((c) => c === 'rgb(18, 52, 86)'), [false, false, true, false]);
+    for (const n of [1, 4]) {
+      await pick(`.feed > div:nth-of-type(${n}) h3`);
+      const s2 = (await state()).selector;
+      assert.equal(await page.$$eval(s2, (els) => els.length), 1, s2);
+      assert.equal(await page.$eval(s2, (e) => e.textContent), 'Headline ' + n);
+    }
+  });
+
+  await test('colour row fits the panel (clear × inside bounds)', async () => {
+    await pick('#title');
+    const r = await page.$eval('siteedit-panel', (h) => {
+      const sr = h.shadowRoot, panel = sr.querySelector('.panel').getBoundingClientRect();
+      return Array.from(sr.querySelectorAll('.row')).filter((row) => row.querySelector('.clear')).map((row) => {
+        const x = row.querySelector('.clear').getBoundingClientRect(), t = row.querySelector('input[type=text]').getBoundingClientRect();
+        const fs = row.closest('fieldset').getBoundingClientRect();
+        return { inside: x.left >= panel.left && x.right <= panel.right - 8 && x.right <= fs.right && t.right <= x.left && x.width > 0, x: [x.left, x.right], panel: [panel.left, panel.right] };
+      });
+    });
+    assert.equal(r.length, 3);
+    for (const row of r) assert.ok(row.inside, JSON.stringify(row));
+    const clip = await page.$eval('siteedit-panel', (h) => { const b = h.shadowRoot.querySelector('fieldset').getBoundingClientRect(); return { x: b.left - 12, y: b.top - 60, width: 330, height: b.height + 70 }; });
+    await fs.mkdir(path.join(ROOT, 'tests/screenshots'), { recursive: true });
+    await page.screenshot({ path: path.join(ROOT, 'tests/screenshots/colour-row.png'), clip });
+    await page.screenshot({ path: path.join(ROOT, 'tests/screenshots/panel.png') });
+  });
+
   await test('hide element (visibility)', async () => {
     await pick('.intro');
     await page.$eval('siteedit-panel', (h) => { const c = h.shadowRoot.querySelector('[data-prop="display"]'); c.click(); });
