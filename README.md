@@ -111,6 +111,9 @@ The shipped manifest is unchanged.
   Shadow DOM.
 - Rules are keyed by hostname, so every page on a host shares them (`www.example.com` and
   `example.com` are separate). A selector that only matches on one page has no effect elsewhere.
+- Elements inside lists and tables (li, tr, role=list …) are pinned to their position, so items
+  added later are not styled. If the site inserts items *before* the picked one or re-sorts the
+  list, the style follows the position, not the item.
 - Selectors that fall back to structural paths (`:nth-of-type`) can break if the site changes its
   markup. Elements with no stable id, attributes or classes are the most fragile.
 - Styles use `!important` but can still lose to a site's own inline `!important` styles.

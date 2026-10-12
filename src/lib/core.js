@@ -165,9 +165,24 @@
    * capitals where a multi-letter segment has no vowel. Long readable names are left alone. */
   function looksCamelHash(name) {
     const s = String(name);
-    if (!/^[A-Za-z]{5,7}$/.test(s) || !/[A-Z]/.test(s.slice(1)) || !/[a-z]/.test(s)) return false;
-    const segs = s.split(/(?=[A-Z])/).filter((x) => x.length >= 2);
-    return segs.length >= 2 && segs.some((x) => !/[aeiouy]/i.test(x));
+    if (!/^[A-Za-z]{5,8}$/.test(s) || !/[A-Z]/.test(s.slice(1)) || !/[a-z]/.test(s)) return false;
+    // Readable camelCase splits into word-like pieces ("nav|Bar", "is|Open"); hashes leave
+    // single letters ("qdrf|G", "h|Ehf|Ie") or vowel-less pieces ("Gr|Fgy", "ldv|Jot").
+    const segs = s.split(/(?=[A-Z])/);
+    return segs.length >= 2 && segs.some((x) => x.length === 1 || !/[aeiouy]/i.test(x));
+  }
+
+  /** Ids are only used as anchors when they look hand-written. Rejects hashes, React useId
+   * (":r1:"), and random suffixes such as "offer-0-xFLa6"; keeps "main-content", "offer-1". */
+  function isStableId(id) {
+    const s = String(id);
+    if (!s || s.length > 64 || /[:\s]/.test(s)) return false;
+    if (looksGenerated(s) || looksSuspicious(s) || looksCamelHash(s)) return false;
+    const segs = s.split(/[-_]+/).filter(Boolean);
+    const last = segs[segs.length - 1] || '';
+    if (segs.length > 1 && last.length >= 4 && ((/[A-Z]/.test(last) && /[a-z]/.test(last.slice(1)) && /[A-Z]/.test(last.slice(1))) || (/\d/.test(last) && /[A-Za-z]/.test(last)))) return false;
+    if (segs.some((g) => g.length >= 4 && (looksSuspicious(g) || looksCamelHash(g)))) return false;
+    return true;
   }
 
   /** Scores a class for selector building: >0 means usable. `count` = uses in the document. */
@@ -250,7 +265,7 @@
 
   root.SiteEditCore = Object.freeze({
     SCHEMA_VERSION, KEY_PREFIX, PROPERTIES,
-    looksGenerated, looksSuspicious, looksCamelHash, classScore,
+    looksGenerated, looksSuspicious, looksCamelHash, classScore, isStableId,
     keyFor: (host) => KEY_PREFIX + String(host).toLowerCase(),
     validateValue, validateSelector, isProtectedSelector, selectorTargetsRoot, isBlanking, matchesPageRoot, stripPageBlanking, validHostname, sanitizeRules, sanitizeSite,
     parseImport, buildExport, renderCSS

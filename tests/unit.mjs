@@ -71,7 +71,7 @@ test('suspicious lowercase classes are flagged conservatively', () => {
   for (const c of ['HeaderMktg', 'btn-primary', 'Button_primary', 'col-md-6', 'h-100']) assert.equal(Core.looksGenerated(c), false, c);
 });
 test('camelCase hashes are detected, readable camelCase is kept', () => {
-  for (const c of ['GrFgy', 'ldvJot', 'bTzKq', 'kxYvRp']) assert.equal(Core.looksCamelHash(c), true, c);
+  for (const c of ['GrFgy', 'ldvJot', 'bTzKq', 'kxYvRp', 'qdrfG', 'hEhfIe', 'eAbCdE']) assert.equal(Core.looksCamelHash(c), true, c);
   for (const c of ['navBar', 'isOpen', 'MainHeader', 'NavItem', 'topBar', 'HeaderMktg', 'promo', 'Card', 'myList']) assert.equal(Core.looksCamelHash(c), false, c);
 });
 test('class scoring prefers shared readable classes and rejects hashes / single-use', () => {
@@ -81,6 +81,14 @@ test('class scoring prefers shared readable classes and rejects hashes / single-
   assert.ok(Core.classScore('card', 12) > Core.classScore('navBar', 3));
   for (const [c, n] of [['GrFgy', 4], ['ldvJot', 30], ['kuhblz', 9], ['kOSbdU', 4], ['css-1abc2d', 4], ['learn', 1], ['x'.repeat(41), 3]]) {
     assert.ok(Core.classScore(c, n) <= 0, c);
+  }
+});
+test('ids with random suffixes are unstable; ordinary ids are kept', () => {
+  for (const id of ['offer-0-xFLa6', 'card-a8f3k2', 'post_Zk3pQ', 'GrFgy', 'ldvJot', ':r1:', 'react-aria-:R2:', 'css-1x2y3z', 'item-12345', 'a1b2c3d4e5', 'kuhblz', 'menu-kxYvRp']) {
+    assert.equal(Core.isStableId(id), false, id);
+  }
+  for (const id of ['main-content', 'offer-1', 'title', 'firstHeading', 'nav', 'site-header', 'footer_links', 'section-2', 'mw-content-text', 'btn', 'todo-list', 'search_input', 'h2', 'user@x']) {
+    assert.equal(Core.isStableId(id), true, id);
   }
 });
 test('border width alone renders a solid border', () => {

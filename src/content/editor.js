@@ -28,7 +28,7 @@
 
   function stableId(el) {
     const id = el.id;
-    return id && !looksGenerated(id) && isUnique('#' + esc(id), el) ? '#' + esc(id) : null;
+    return id && Core.isStableId(id) && isUnique('#' + esc(id), el) ? '#' + esc(id) : null;
   }
 
   function stableClasses(el) {
@@ -43,21 +43,42 @@
       .map((x) => x.c);
   }
 
-  function selectorFor(el) {
-    if (!(el instanceof Element)) return null;
-    if (el === document.documentElement) return 'html';
-    if (el === document.body) return 'body';
-    const id = stableId(el);
-    if (id) return id;
-    const tag = el.localName;
-    for (const a of STABLE_ATTRS) {
-      const v = el.getAttribute(a);
-      if (v && v.length < 80) {
-        const sel = `${tag}[${a}="${CSS.escape(v)}"]`;
-        if (isUnique(sel, el)) return sel;
-      }
+  const LIST_PARENTS = new Set(['ul', 'ol', 'menu', 'dl', 'tbody', 'thead', 'tfoot', 'table', 'select', 'datalist']);
+  const LIST_ITEMS = new Set(['li', 'tr', 'dt', 'dd', 'option', 'article']);
+  const LIST_ROLES = /^(list|listbox|grid|treegrid|feed|table|rowgroup|tablist|menu)$/;
+  /** Nearest ancestor-or-self that is an item of a repeating container (list row, card in a feed). */
+  function repeatingItem(el) {
+    for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+      const p = n.parentElement;
+      if (!p) break;
+      if (LIST_ITEMS.has(n.localName) || LIST_PARENTS.has(p.localName) || LIST_ROLES.test(p.getAttribute('role') || '') ||
+          /^(listitem|row|option|article|tab|menuitem)$/.test(n.getAttribute('role') || '')) return n;
     }
-    // Ancestor chain up to (not including) the nearest stable-id ancestor or <body>.
+    return null;
+  }
+  const hasSameTagSiblings = (n) => !!n.parentElement && Array.from(n.parentElement.children).some((s) => s !== n && s.localName === n.localName);
+
+  const nth = (node) => {
+    const parent = node.parentElement;
+    if (!parent) return '';
+    const sameTag = Array.from(parent.children).filter((s) => s.localName === node.localName);
+    return sameTag.length > 1 ? `:nth-of-type(${sameTag.indexOf(node) + 1})` : '';
+  };
+  const forceNth = (node) => {
+    const parent = node.parentElement;
+    if (!parent) return '';
+    const sameTag = Array.from(parent.children).filter((s) => s.localName === node.localName);
+    return `:nth-of-type(${sameTag.indexOf(node) + 1})`;
+  };
+  function step(node, positional) {
+    let part = node.localName + stableClasses(node).map((c) => '.' + esc(c)).join('');
+    if (positional) return part + nth(node);
+    const parent = node.parentElement;
+    if (parent && Array.from(parent.children).some((s) => s !== node && s.matches(part))) part += nth(node);
+    return part;
+  }
+  /** Ancestor chain from `el` up to (excluding) the nearest stable-id ancestor or <body>. */
+  function chainOf(el) {
     const chain = [];
     let anchor = 'body';
     for (let cur = el; cur && cur !== document.body && cur !== document.documentElement; cur = cur.parentElement) {
@@ -65,19 +86,59 @@
       if (cid) { anchor = cid; break; }
       chain.push(cur);
     }
-    const nth = (node) => {
-      const parent = node.parentElement;
-      if (!parent) return '';
-      const sameTag = Array.from(parent.children).filter((s) => s.localName === node.localName);
-      return sameTag.length > 1 ? `:nth-of-type(${sameTag.indexOf(node) + 1})` : '';
-    };
-    const step = (node, positional) => {
-      let part = node.localName + stableClasses(node).map((c) => '.' + esc(c)).join('');
-      if (positional) return part + nth(node);
-      const parent = node.parentElement;
-      if (parent && Array.from(parent.children).filter((s) => s !== node && s.matches(part)).length) part += nth(node);
-      return part;
-    };
+    return { chain, anchor };
+  }
+  /** Positional path (nth-of-type on every step) from the anchor; shortened while unique but
+   * never below `minSteps` steps, so it stays tied to its container. */
+  function positionalPath(el, minSteps) {
+    const { chain, anchor } = chainOf(el);
+    const pos = chain.map((n) => step(n, true)).reverse();
+    let best = [anchor, ...pos].join(' > ');
+    for (let i = 1; i <= pos.length - minSteps; i++) {
+      const sel = pos.slice(i).join(' > ');
+      if (!isUnique(sel, el)) break;
+      best = sel;
+    }
+    return isUnique(best, el) ? best : null;
+  }
+
+  /** Builds a selector for an element inside a repeating item: the item is pinned by position
+   * (e.g. `ul > li:nth-of-type(1)`), the rest is descriptive, so items added later never match. */
+  function itemSelector(el, item) {
+    let itemSel = positionalPath(item, 2);
+    if (!itemSel) return null;
+    if (!/:nth-of-type\(\d+\)$/.test(itemSel)) itemSel += forceNth(item);
+    if (el === item) return isUnique(itemSel, el) ? itemSel : null;
+    const inner = [];
+    for (let n = el; n && n !== item; n = n.parentElement) inner.unshift(step(n, false));
+    const sel = itemSel + ' > ' + inner.join(' > ');
+    return isUnique(sel, el) ? sel : null;
+  }
+
+  function selectorFor(el) {
+    if (!(el instanceof Element)) return null;
+    if (el === document.documentElement) return 'html';
+    if (el === document.body) return 'body';
+    const id = stableId(el);
+    if (id) return id;
+    const item = repeatingItem(el);
+    if (item) {
+      const sel = itemSelector(el, item) || positionalPath(el, 2);
+      return sel ? Core.validateSelector(sel) : null;
+    }
+    const tag = el.localName;
+    // Attribute selectors only for elements without same-tag siblings; repeated siblings would
+    // share the attribute value once more of them are rendered.
+    if (!hasSameTagSiblings(el)) {
+      for (const a of STABLE_ATTRS) {
+        const v = el.getAttribute(a);
+        if (v && v.length < 80) {
+          const sel = `${tag}[${a}="${CSS.escape(v)}"]`;
+          if (isUnique(sel, el)) return sel;
+        }
+      }
+    }
+    const { chain, anchor } = chainOf(el);
     // Pass 1: shortest suffix of descriptive steps that is unique.
     const parts = [];
     for (let i = 0; i < chain.length; i++) {
@@ -87,16 +148,17 @@
     }
     const anchored = [anchor, ...parts].join(' > ');
     if (isUnique(anchored, el)) return Core.validateSelector(anchored);
-    // Pass 2: positional (:nth-of-type on every step) from the anchor; a full child path from a
-    // unique anchor is unique by construction. Shorten from the top while it stays unique.
-    const pos = chain.map((n) => step(n, true)).reverse();
-    let best = [anchor, ...pos].join(' > ');
-    for (let i = 1; i < pos.length; i++) {
-      const sel = pos.slice(i).join(' > ');
-      if (!isUnique(sel, el)) break;
-      best = sel;
-    }
-    return isUnique(best, el) ? Core.validateSelector(best) : null;
+    // Pass 2: fully positional from the anchor; unique by construction.
+    const pos = positionalPath(el, 1);
+    return pos ? Core.validateSelector(pos) : null;
+  }
+
+  /** Short note for the panel about how the selector behaves with similar elements. */
+  function scopeNote(selector, el) {
+    if (/^#[^\s>~+]+$/.test(selector)) return '';
+    if (repeatingItem(el)) return 'List item: pinned to its position, so items added later are not styled.';
+    if (!/:nth-of-type|#/.test(selector)) return 'Note: similar elements added later may also get this style.';
+    return '';
   }
 
   // ---------- UI ----------
@@ -131,6 +193,8 @@
     button.icon { padding: 4px 8px; background: transparent; border-color: transparent; color: #8a90a6; }
     button.icon:hover { color: #fff; background: #2a2e3e; }
     .sel-info { font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: #b7a8ff; background: #1a1d28; border: 1px solid #262a38; border-radius: 8px; padding: 6px 8px; margin-bottom: 10px; word-break: break-all; }
+    .scope-hint { color: #f5c26b; font-size: 11.5px; margin: -4px 0 10px; }
+    .scope-hint:empty { display: none; }
     .sel-info.empty { color: #7a8096; font-family: inherit; font-size: 12px; }
     fieldset { min-width: 0; min-inline-size: 0; border: 1px solid #262a38; border-radius: 10px; padding: 8px 10px 10px; margin: 0 0 8px; }
     fieldset:disabled { opacity: .45; }
@@ -242,6 +306,7 @@
   const redoBtn = h('button', { 'data-action': 'redo', title: 'Redo (Ctrl+Shift+Z)', text: '↷ Redo' });
   const selInfo = h('div', { class: 'sel-info empty', 'data-role': 'selector', text: 'No element selected. Click “Select element”, then click anything on the page.' });
   const status = h('div', { class: 'status', role: 'status', 'aria-live': 'polite' });
+  const scopeHint = h('div', { class: 'scope-hint', 'data-role': 'scope-note' });
   const ruleCount = h('span');
   const ruleList = h('ul');
   const fileInput = h('input', { type: 'file', accept: 'application/json,.json', style: 'display:none' });
@@ -264,7 +329,7 @@
       h('div', { class: 'host', text: RT.host }), h('button', { class: 'icon', 'data-action': 'close', title: 'Close (Esc twice)', text: '✕' })),
     h('div', { class: 'body' },
       h('div', { class: 'toolbar' }, pickBtn, undoBtn, redoBtn),
-      selInfo, ...fieldsets,
+      selInfo, scopeHint, ...fieldsets,
       h('div', { class: 'actions' },
         resetElBtn, h('button', { class: 'danger', 'data-action': 'reset-site', text: 'Reset site' }),
         h('button', { 'data-action': 'export', text: 'Export JSON' }), h('button', { 'data-action': 'import', text: 'Import JSON' })),
@@ -407,6 +472,7 @@
     }
     selected = { el, selector };
     selInfo.textContent = selector; selInfo.classList.remove('empty');
+    scopeHint.textContent = scopeNote(selector, el);
     syncControls();
   }
   function selectBySelector(s) {
@@ -414,6 +480,7 @@
     try { el = document.querySelector(s); } catch (_) {}
     selected = { el, selector: s };
     selInfo.textContent = s + (el ? '' : '  (not on page right now)'); selInfo.classList.remove('empty');
+    scopeHint.textContent = '';
     syncControls();
   }
 

@@ -240,6 +240,35 @@ try {
     await page.screenshot({ path: path.join(ROOT, 'tests/screenshots/panel.png') });
   });
 
+  await test('list item picked alone stays the only one styled when more items are added', async () => {
+    await pick('.todo-list label');
+    const sel = (await state()).selector;
+    assert.match(sel, /li:nth-of-type\(1\)/, 'pinned to its list position: ' + sel);
+    assert.match(await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('[data-role="scope-note"]').textContent), /List item/);
+    await setColor('color', '#ff0000');
+    await page.evaluate(() => { window.addTodo('second'); window.addTodo('third'); });
+    await sleep(300);
+    const colors = await page.$$eval('.todo-list label', (ls) => ls.map((l) => getComputedStyle(l).color));
+    assert.deepEqual(colors.map((c) => c === 'rgb(255, 0, 0)'), [true, false, false]);
+    assert.equal(await page.$$eval(sel, (els) => els.length), 1);
+    await page.reload({ waitUntil: 'load' });
+    await page.evaluate(() => { window.addTodo('second'); window.addTodo('third'); });
+    await sleep(300);
+    const after = await page.$$eval('.todo-list label', (ls) => ls.map((l) => getComputedStyle(l).color));
+    assert.deepEqual(after.map((c) => c === 'rgb(255, 0, 0)'), [true, false, false], 'after reload');
+    await openEditor();
+    await action('reset-element');
+  });
+
+  await test('scope note warns when a selector could match similar elements', async () => {
+    await pick('.card:nth-of-type(2) .label');
+    const note = await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('[data-role="scope-note"]').textContent);
+    const sel = (await state()).selector;
+    assert.ok(/nth-of-type|#/.test(sel) ? note === '' : /similar elements/.test(note), sel + ' / ' + note);
+    await pick('#title');
+    assert.equal(await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('[data-role="scope-note"]').textContent), '');
+  });
+
   await test('hide element (visibility)', async () => {
     await pick('.intro');
     await page.$eval('siteedit-panel', (h) => { const c = h.shadowRoot.querySelector('[data-prop="display"]'); c.click(); });

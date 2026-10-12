@@ -21,6 +21,9 @@
     <div class="kOSbdU topRow__-dqkhM"><b class="Header_title__a1b2c">Row B</b></div>
   </section>
   <section class="feed"></section>
+  <section class="todoapp">
+    <ul class="todo-list"><li><div class="view"><label data-testid="todo-item-label">first</label></div></li></ul>
+  </section>
   <ul id="list"></ul>
   <div id="slot"></div>
   <script>
@@ -33,6 +36,13 @@
         const h = document.createElement('h3'); h.className = 'headline'; h.textContent = 'Headline ' + c; node.append(h);
       }
     })();
+    window.addTodo = (text, atTop) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<div class="view"><label data-testid="todo-item-label"></label></div>';
+      li.querySelector('label').textContent = text;
+      const ul = document.querySelector('.todo-list');
+      atTop ? ul.prepend(li) : ul.append(li);
+    };
     // Dynamic content: list items rendered after load, and a late banner.
     setTimeout(() => {
       const list = document.getElementById('list');
