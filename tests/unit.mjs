@@ -31,6 +31,44 @@ test('display:none is blocked on html, body, * and :root', () => {
   const out = Core.sanitizeRules({ html: { display: 'none' }, BODY: { display: 'none', color: 'red' }, '*': { display: 'none' }, ':root': { display: 'none' }, '.ad': { display: 'none' } });
   assert.deepEqual(JSON.parse(JSON.stringify(out)), { BODY: { color: 'red' }, '.ad': { display: 'none' } });
   assert.equal(Core.isProtectedSelector(' html '), true);
+  assert.equal(Core.isProtectedSelector('.ad'), false);
+});
+const ROOT_VARIANTS = ['html', 'body', '*', ':root', 'HTML', ' body ', 'html>body', 'html > body', 'html body', 'body:not(#x)',
+  ':is(body)', ':where(html)', 'html:root', 'body,p', 'html, body', '*:not(siteedit-panel)', ':not(.x)', ':has(main)',
+  ':is(main, body)', 'div ~ body', 'body.home', 'html[lang]', ':where(:is(body))', '#app,body', 'body >*', 'body *', 'html > *'];
+test('blanking styles are rejected on every page-root variant', () => {
+  for (const sel of ROOT_VARIANTS) {
+    assert.equal(Core.selectorTargetsRoot(sel), true, sel);
+    const out = JSON.parse(JSON.stringify(Core.sanitizeRules({ [sel]: { display: 'none', opacity: '0', color: 'red' } })));
+    const key = Object.keys(out)[0];
+    assert.ok(key, 'non-blanking declaration kept: ' + sel);
+    assert.deepEqual(out[key], { color: 'red' }, sel);
+  }
+});
+test('regular elements can still be hidden', () => {
+  for (const sel of ['.ad', 'body > .ad', 'html > body > div:nth-of-type(2)', 'aside.learn > header', '#banner', 'div:not(.keep)', 'main :is(p, span)']) {
+    assert.equal(Core.selectorTargetsRoot(sel), false, sel);
+    assert.equal(Core.sanitizeRules({ [sel]: { display: 'none' } })[sel].display, 'none', sel);
+  }
+  assert.equal(Core.sanitizeRules({ '.x': { opacity: '0' } })['.x'].opacity, '0');
+});
+test('opacity below 0.2 counts as blanking on roots, 0.5 does not', () => {
+  assert.equal(Core.isBlanking('opacity', '0'), true);
+  assert.equal(Core.isBlanking('opacity', '0.1'), true);
+  assert.equal(Core.isBlanking('opacity', '10%'), true);
+  assert.equal(Core.isBlanking('opacity', '0.5'), false);
+  assert.equal(Core.sanitizeRules({ body: { opacity: '0.5' } }).body.opacity, '0.5');
+});
+test('import of {"html>body":{"display":"none"}} is neutralized', () => {
+  const sites = Core.parseImport(JSON.stringify({ format: 'siteedit', sites: { 'todomvc.com': { rules: { 'html>body': { display: 'none' } } } } }));
+  assert.deepEqual(Object.keys(sites), []);
+  assert.equal(Core.renderCSS({ 'html>body': { display: 'none' } }), '');
+});
+test('suspicious lowercase classes are flagged conservatively', () => {
+  for (const c of ['kuhblz', 'xzqrt', 'bdfgk']) assert.equal(Core.looksSuspicious(c), true, c);
+  for (const c of ['learn', 'header', 'card', 'container', 'strength', 'button', 'promo', 'nav-bar', 'item']) assert.equal(Core.looksSuspicious(c), false, c);
+  assert.equal(Core.looksGenerated('ssrcss-1q0x1qg-Promo'), true);
+  for (const c of ['HeaderMktg', 'btn-primary', 'Button_primary', 'col-md-6', 'h-100']) assert.equal(Core.looksGenerated(c), false, c);
 });
 test('border width alone renders a solid border', () => {
   assert.match(Core.renderCSS({ p: { 'border-width': '3px' } }), /border-style: solid !important/);

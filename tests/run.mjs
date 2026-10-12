@@ -312,6 +312,77 @@ try {
     assert.equal(await css('#title', 'color'), 'rgb(255, 0, 0)');
   });
 
+  const ROOT_VARIANTS = ['html', 'body', '*', ':root', 'html>body', 'html > body', 'html, body', 'body,p', 'body:not(#x)',
+    ':is(body)', ':where(html)', 'html:root', '*:not(siteedit-panel)', 'body >*', ':has(main)', '.page', 'body.page'];
+  const rootVisible = () => page.evaluate(() => {
+    const h = getComputedStyle(document.documentElement), b = getComputedStyle(document.body);
+    return h.display !== 'none' && b.display !== 'none' && +h.opacity >= 0.2 && +b.opacity >= 0.2 && document.querySelector('#title').getBoundingClientRect().height > 0;
+  });
+  const variantsFile = async (extra = {}) => {
+    const rules = {};
+    for (const sel of ROOT_VARIANTS) rules[sel] = { display: 'none', opacity: '0' };
+    Object.assign(rules, extra);
+    const file = path.join(os.tmpdir(), 'siteedit-root-variants.json');
+    await fs.writeFile(file, JSON.stringify({ format: 'siteedit', sites: { '127.0.0.1': { rules } } }));
+    return file;
+  };
+
+  await test('panel is mounted on <html>, not <body>', async () => {
+    await openEditor();
+    assert.equal(await page.$eval('siteedit-panel', (h) => h.parentElement.localName), 'html');
+  });
+
+  await test('page-root selectors cannot blank the page via panel import', async () => {
+    await action('reset-site');
+    const input = await page.$('siteedit-panel >>> input[type=file]');
+    await input.uploadFile(await variantsFile({ '#title': { color: 'rgb(1, 2, 3)' } }));
+    await sleep(400);
+    assert.equal(await css('#title', 'color'), 'rgb(1, 2, 3)', 'import itself went through');
+    assert.ok(await rootVisible(), 'page still visible');
+    const s = await stored();
+    for (const sel of Object.keys(s.rules)) {
+      if (sel === '.page') continue; // statically harmless; neutralized at runtime because body matches it
+      assert.ok(!s.rules[sel].display && !s.rules[sel].opacity, 'stored blanking rule: ' + sel);
+    }
+    await page.reload({ waitUntil: 'load' }); await sleep(1200);
+    assert.ok(await rootVisible(), 'still visible after reload');
+    // Runtime guard follows body class changes.
+    await page.evaluate(() => { document.body.className = 'other'; }); await sleep(300);
+    await page.evaluate(() => { document.body.className = 'page'; }); await sleep(300);
+    assert.ok(await rootVisible(), 'visible after body class churn');
+    await openEditor();
+  });
+
+  await test('editor refuses to hide or fade html/body (including class-matched body)', async () => {
+    for (const sel of ['html', 'body', '.page']) {
+      await iso(`(s) => { const t = globalThis.__siteEditEditor._test; t.select(s === 'html' ? document.documentElement : document.body); }`, sel);
+      await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('[data-prop="display"]').click());
+      await iso(`() => globalThis.__siteEditEditor._test.setProp('opacity', '0', true)`);
+      await sleep(250);
+      assert.ok(await rootVisible(), sel);
+      assert.match(await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('.status').textContent), /cannot be hidden/);
+    }
+    const s = await stored();
+    assert.ok(!s.rules.body && !s.rules.html, JSON.stringify(s.rules));
+    await action('reset-site');
+  });
+
+  await test('Manager import strips blanking rules for every root variant', async () => {
+    const mgr = await browser.newPage();
+    mgr.on('pageerror', (e) => errors.push('[options] ' + e.message));
+    await mgr.goto(`chrome-extension://${extId}/src/options/options.html`);
+    const text = await fs.readFile(await variantsFile({ p: { color: 'red' } }), 'utf8');
+    await mgr.evaluate((t) => globalThis.__siteEditManager.importText(t, true), text);
+    await mgr.close();
+    const s = await stored();
+    for (const sel of Object.keys(s.rules)) if (sel !== '.page') assert.ok(!s.rules[sel].display && !s.rules[sel].opacity, sel);
+    await page.bringToFront();
+    await page.reload({ waitUntil: 'load' }); await sleep(1200);
+    assert.ok(await rootVisible());
+    await openEditor();
+    await action('reset-site');
+  });
+
   await test('no console errors', async () => {
     assert.deepEqual(errors, []);
   });

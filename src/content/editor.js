@@ -32,7 +32,10 @@
   }
 
   function stableClasses(el) {
-    return Array.from(el.classList).filter((c) => c.length < 40 && !looksGenerated(c) && !STATE_CLASS.test(c) && !c.startsWith('siteedit')).slice(0, 2);
+    // Conservative: drop hashed, suspicious-looking and single-use classes; the path then
+    // falls back to tag + :nth-of-type, which survives class-name churn better.
+    return Array.from(el.classList).filter((c) => c.length < 40 && !looksGenerated(c) && !Core.looksSuspicious(c) &&
+      !STATE_CLASS.test(c) && !c.startsWith('siteedit') && document.getElementsByClassName(c).length > 1).slice(0, 2);
   }
 
   function selectorFor(el) {
@@ -280,8 +283,8 @@
     const v = String(value || '').trim();
     const rule = { ...(working[sel] || {}) };
     if (!v) delete rule[prop];
-    else if (prop === 'display' && Core.isProtectedSelector(sel)) {
-      say('The whole page (html / body) cannot be hidden.', 'err');
+    else if (Core.isBlanking(prop, v) && (Core.selectorTargetsRoot(sel) || Core.matchesPageRoot(sel, document))) {
+      say('The whole page (html / body) cannot be hidden or made transparent.', 'err');
       if (commit) syncControls();
       return;
     } else {
@@ -508,7 +511,7 @@
   function openPanel() {
     if (open) return;
     open = true;
-    (document.body || document.documentElement).appendChild(host);
+    document.documentElement.appendChild(host);
     document.addEventListener('keydown', onKey, true);
     addEventListener('scroll', onViewport, true);
     addEventListener('resize', onViewport);

@@ -13,6 +13,12 @@
   let styleEl = null;      // fallback when adoptedStyleSheets is unavailable
   let observer = null;
   let debounceTimer = 0;
+  let lastRootSig = '';
+  // html/body identity; when it changes, blanking guards must be re-evaluated.
+  const rootSignature = () => {
+    const h = document.documentElement, b = document.body;
+    return [h && h.id, h && h.className, b && b.id, b && b.className].join('|');
+  };
 
   function activeRules() { return previewRules || rules; }
 
@@ -30,7 +36,8 @@
   }
 
   function render() {
-    const css = Core.renderCSS(activeRules());
+    const css = Core.renderCSS(activeRules(), document);
+    lastRootSig = rootSignature();
     try { sheet.replaceSync(css); } catch (_) { /* invalid rule already filtered */ }
     if (styleEl) styleEl.textContent = css;
     ensureAttached();
@@ -44,6 +51,7 @@
   function onMutations() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
+      if (rootSignature() !== lastRootSig && Object.keys(activeRules()).length) render();
       ensureAttached();
       listeners.forEach((fn) => { try { fn(); } catch (_) {} });
     }, 150);
@@ -52,7 +60,7 @@
     const needed = Object.keys(activeRules()).length > 0 || listeners.size > 0;
     if (needed && !observer && document.documentElement) {
       observer = new MutationObserver(onMutations);
-      observer.observe(document.documentElement, { childList: true, subtree: true });
+      observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'id'] });
     } else if (!needed && observer) {
       observer.disconnect(); observer = null;
     }
@@ -79,17 +87,17 @@
     async save(r) {
       const clean = Core.sanitizeRules(r);
       rules = clean; previewRules = null;
+      render(); // apply synchronously; storage write follows
       if (Object.keys(clean).length) {
         await chrome.storage.local.set({ [key]: { version: Core.SCHEMA_VERSION, updatedAt: Date.now(), rules: clean } });
       } else {
         await chrome.storage.local.remove(key);
       }
-      render();
       return clean;
     },
     onDomChange(fn) { listeners.add(fn); updateObserver(); return () => { listeners.delete(fn); updateObserver(); }; }
   });
 
   load();
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureAttached, { once: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render, { once: true });
 })();

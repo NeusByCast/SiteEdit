@@ -72,6 +72,11 @@ through `activeTab`.
 - CSS is generated only from a whitelist of properties. Every value is length-limited, checked with
   `CSS.supports`, and rejected if it contains `; { } < > \ ! /*`, `url(`, `image(`, `image-set`,
   `expression`, `javascript:` or `@import`. "Hide" can only set `display: none`.
+- Page-blanking guard: `display: none` and opacity below 0.2 are refused on any selector that could
+  match `<html>`/`<body>` (comma lists, `*`, `:root`, `html`/`body` in the last compound, including
+  `:is()`/`:where()`/`:not()` forms). At runtime, rules whose selector matches the live `html` or `body`
+  (e.g. a body class) are also skipped. The panel is mounted on `<html>`, so hiding body content never
+  hides the editor.
 - Selectors are length-limited, may not contain `{ } < > ; @ /*`, and must parse with
   `querySelector`.
 - Imported JSON is size-limited, has to carry `"format": "siteedit"`, and goes through the same
