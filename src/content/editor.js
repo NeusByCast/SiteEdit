@@ -78,11 +78,21 @@
     return part;
   }
   /** Ancestor chain from `el` up to (excluding) the nearest stable-id ancestor or <body>. */
+  /** `tag.class` when the element has a readable class used nowhere else (top-level layout
+   * containers such as div.mw-page-container): a sturdier anchor than body > div:nth-of-type(N). */
+  function uniqueReadableClass(node) {
+    for (const c of node.classList) {
+      if (STATE_CLASS.test(c) || c.startsWith('siteedit') || !Core.isReadableName(c)) continue;
+      const sel = node.localName + '.' + esc(c);
+      if (isUnique(sel, node)) return sel;
+    }
+    return null;
+  }
   function chainOf(el) {
     const chain = [];
     let anchor = 'body';
     for (let cur = el; cur && cur !== document.body && cur !== document.documentElement; cur = cur.parentElement) {
-      const cid = cur !== el && stableId(cur);
+      const cid = cur !== el && (stableId(cur) || uniqueReadableClass(cur));
       if (cid) { anchor = cid; break; }
       chain.push(cur);
     }
@@ -132,7 +142,7 @@
     if (!hasSameTagSiblings(el)) {
       for (const a of STABLE_ATTRS) {
         const v = el.getAttribute(a);
-        if (v && v.length < 80) {
+        if (v && Core.isStableAttrValue(v)) {
           const sel = `${tag}[${a}="${CSS.escape(v)}"]`;
           if (isUnique(sel, el)) return sel;
         }
@@ -143,6 +153,9 @@
     const parts = [];
     for (let i = 0; i < chain.length; i++) {
       parts.unshift(step(chain[i], false));
+      // Don't stop on a bare positional top step (div:nth-of-type(2) > p): it shifts when
+      // siblings are injected. Keep climbing to a class, attribute or anchor instead.
+      if (/^[a-z][a-z0-9-]*:nth-of-type\(\d+\)$/.test(parts[0])) continue;
       const sel = parts.join(' > ');
       if (isUnique(sel, el)) return Core.validateSelector(sel);
     }

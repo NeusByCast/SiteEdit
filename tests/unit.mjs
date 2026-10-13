@@ -79,7 +79,7 @@ test('class scoring prefers shared readable classes and rejects hashes / single-
   assert.ok(Core.classScore('nav-item', 5) > 0);
   assert.ok(Core.classScore('navBar', 3) > 0);
   assert.ok(Core.classScore('card', 12) > Core.classScore('navBar', 3));
-  for (const [c, n] of [['GrFgy', 4], ['ldvJot', 30], ['kuhblz', 9], ['kOSbdU', 4], ['css-1abc2d', 4], ['learn', 1], ['x'.repeat(41), 3]]) {
+  for (const [c, n] of [['GrFgy', 4], ['ldvJot', 30], ['kuhblz', 9], ['kOSbdU', 4], ['css-1abc2d', 4], ['kuhblz', 1], ['x7k2', 1], ['x'.repeat(41), 3]]) {
     assert.ok(Core.classScore(c, n) <= 0, c);
   }
 });
@@ -90,6 +90,34 @@ test('ids with random suffixes are unstable; ordinary ids are kept', () => {
   for (const id of ['main-content', 'offer-1', 'title', 'firstHeading', 'nav', 'site-header', 'footer_links', 'section-2', 'mw-content-text', 'btn', 'todo-list', 'search_input', 'h2', 'user@x']) {
     assert.equal(Core.isStableId(id), true, id);
   }
+});
+test('single-use readable classes are kept, unreadable ones are not', () => {
+  for (const c of ['learn', 'mw-page-container', 'vector-header', 'site-banner', 'footer_links', 'col-2', 'h1-title']) {
+    assert.equal(Core.isReadableName(c), true, c); assert.ok(Core.classScore(c, 1) > 0, c);
+  }
+  for (const c of ['kuhblz', 'x7k2', 'a1b2c3', 'GrFgy', 'qdrf-zz', 'css-1x2y3z', 'mw3A', 'offer-0-6ybzf']) {
+    assert.ok(Core.classScore(c, 1) <= 0, c);
+  }
+});
+test('attribute values are screened for hashes', () => {
+  for (const v of ['offer-0-6ybzf', 'card-a8f3k2', ':r1:', 'GrFgy', 'Close a1b2c3', 'x'.repeat(81)]) assert.equal(Core.isStableAttrValue(v), false, v);
+  for (const v of ['todo-item-label', 'search', 'Close dialog', 'Main menu', 'q', 'submit-button', 'Page 2 of 10']) assert.equal(Core.isStableAttrValue(v), true, v);
+});
+test('MediaWiki ids: named mw-* are stable, Parsoid / numeric / hash ones are not', () => {
+  for (const id of ['mw-content-text', 'mw-panel', 'mw-head', 'mw-page-base', 'mw-navigation', 'mw-sidebar-button']) assert.equal(Core.isStableId(id), true, id);
+  for (const id of ['mwAg', 'mwBQ', 'mw3A', 'mw_1', 'mw-1234', 'toc-mw-xyz123', 'mw-xyz123']) assert.equal(Core.isStableId(id), false, id);
+});
+test('bogus updatedAt values are normalized', () => {
+  for (const t of [1e20, -5, 'x', NaN, Infinity]) {
+    const at = Core.sanitizeSite({ updatedAt: t, rules: {} }).updatedAt;
+    assert.ok(Number.isFinite(at) && Math.abs(at - Date.now()) < 5000, String(t));
+  }
+  assert.equal(Core.sanitizeSite({ updatedAt: 1000, rules: {} }).updatedAt, 1000);
+});
+test('1.0.4 saved data loads unchanged', () => {
+  const saved = { version: 1, updatedAt: 1760000000000, rules: { '#root > main > ul > li:nth-of-type(1) > div > label': { color: '#ff0000' }, 'aside > header': { 'border-width': '3px' } } };
+  const site = Core.sanitizeSite(saved);
+  assert.deepEqual(JSON.parse(JSON.stringify(site)), saved);
 });
 test('border width alone renders a solid border', () => {
   assert.match(Core.renderCSS({ p: { 'border-width': '3px' } }), /border-style: solid !important/);

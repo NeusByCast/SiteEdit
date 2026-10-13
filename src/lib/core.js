@@ -177,6 +177,9 @@
   function isStableId(id) {
     const s = String(id);
     if (!s || s.length > 64 || /[:\s]/.test(s)) return false;
+    // MediaWiki/Parsoid element ids ("mwAg", "mwBQ", "mw3A") are regenerated per render;
+    // named ones ("mw-content-text", "mw-panel") are stable.
+    if (/^mw[A-Z0-9_][A-Za-z0-9_]{0,8}$/.test(s)) return false;
     if (looksGenerated(s) || looksSuspicious(s) || looksCamelHash(s)) return false;
     const segs = s.split(/[-_]+/).filter(Boolean);
     const last = segs[segs.length - 1] || '';
@@ -185,13 +188,32 @@
     return true;
   }
 
+  /** Plain words or kebab/snake case made of word-like pieces, e.g. "learn", "mw-page-container". */
+  function isReadableName(name) {
+    const s = String(name);
+    if (!/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(s) || s.length < 3 || s.length > 40) return false;
+    if (looksGenerated(s) || /^mw[0-9_]/.test(s)) return false;
+    return s.split(/[-_]+/).every((g) => /^\d{1,3}$/.test(g) || (/^[a-z]+\d{0,2}$/.test(g) && (g.length <= 3 || (/[aeiouy]/.test(g) && !looksSuspicious(g)))));
+  }
+
+  /** Attribute values used in selectors (data-testid, name, aria-label ...). Ids rules apply to
+   * single tokens; labels with spaces must be plain text without hash-like tokens. */
+  function isStableAttrValue(value) {
+    const v = String(value).trim();
+    if (!v || v.length > 80) return false;
+    if (/\s/.test(v)) return v.split(/\s+/).every((t) => !looksGenerated(t) && !/[A-Za-z]\d|\d[A-Za-z]/.test(t) || /^\d+$/.test(t));
+    return isStableId(v);
+  }
+
   /** Scores a class for selector building: >0 means usable. `count` = uses in the document. */
   function classScore(name, count) {
     const s = String(name);
     if (!s || s.length >= 40 || looksGenerated(s)) return -10;
     let score = 1;
     if (looksSuspicious(s) || looksCamelHash(s)) score -= 3;
-    if (count <= 1) score -= 2;              // single-use: positional steps are more stable
+    // Single-use classes: keep readable names ("mw-page-container", "learn") so injected
+    // siblings don't shift positional steps; drop anything else.
+    if (count <= 1) score -= isReadableName(s) ? 1 : 2;
     else if (count <= 100) score += 1;       // shared, component-like class
     if (/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/.test(s) && /[aeiou]/.test(s)) score += 1; // kebab/plain words
     return score;
@@ -224,7 +246,10 @@
 
   function sanitizeSite(input) {
     const rules = sanitizeRules(input && input.rules);
-    return { version: SCHEMA_VERSION, updatedAt: Number(input && input.updatedAt) || Date.now(), rules };
+    let updatedAt = Number(input && input.updatedAt);
+    // Guard against bogus timestamps in imported files (Invalid Date in the Manager).
+    if (!Number.isFinite(updatedAt) || updatedAt <= 0 || updatedAt > Date.now() + 864e5) updatedAt = Date.now();
+    return { version: SCHEMA_VERSION, updatedAt, rules };
   }
 
   /** Parses an export file. Accepts {format:"siteedit", sites:{host:{rules}}}. */
@@ -265,7 +290,7 @@
 
   root.SiteEditCore = Object.freeze({
     SCHEMA_VERSION, KEY_PREFIX, PROPERTIES,
-    looksGenerated, looksSuspicious, looksCamelHash, classScore, isStableId,
+    looksGenerated, looksSuspicious, looksCamelHash, classScore, isStableId, isReadableName, isStableAttrValue,
     keyFor: (host) => KEY_PREFIX + String(host).toLowerCase(),
     validateValue, validateSelector, isProtectedSelector, selectorTargetsRoot, isBlanking, matchesPageRoot, stripPageBlanking, validHostname, sanitizeRules, sanitizeSite,
     parseImport, buildExport, renderCSS

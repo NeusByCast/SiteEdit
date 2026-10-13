@@ -1,6 +1,6 @@
 {
   "name": "siteedit",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "SiteEdit - visually customize any website (Chrome MV3 extension)",
   "scripts": {
     "test": "node tests/unit.mjs && node tests/run.mjs"

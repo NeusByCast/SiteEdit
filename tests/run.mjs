@@ -269,6 +269,28 @@ try {
     assert.equal(await page.$eval('siteedit-panel', (h) => h.shadowRoot.querySelector('[data-role="scope-note"]').textContent), '');
   });
 
+  await test('readable single-use class anchors the path; injected banner does not shift it', async () => {
+    await pick('.layout-wrapper > div:nth-of-type(1) > p');
+    const sel = (await state()).selector;
+    assert.match(sel, /layout-wrapper/, sel);
+    await setColor('color', '#00aa00');
+    await page.evaluate(() => { const b = document.createElement('div'); b.textContent = 'Injected banner'; document.body.prepend(b); });
+    await sleep(200);
+    assert.equal(await page.$$eval(sel, (e) => e.length), 1);
+    assert.equal(await page.$eval(sel, (e) => e.textContent), 'Deep text');
+    assert.equal(await css('.layout-wrapper > div:nth-of-type(1) > p', 'color'), 'rgb(0, 170, 0)');
+    await action('reset-element');
+  });
+
+  await test('hash-like attribute values are not used in selectors', async () => {
+    await pick('input[name="offer-0-6ybzf"]');
+    const sel = (await state()).selector;
+    assert.ok(!/6ybzf/.test(sel), sel);
+    assert.equal(await page.$eval(sel, (e) => e.getAttribute('name')), 'offer-0-6ybzf');
+    await pick('input[name="email"]');
+    assert.equal((await state()).selector, 'input[name="email"]');
+  });
+
   await test('hide element (visibility)', async () => {
     await pick('.intro');
     await page.$eval('siteedit-panel', (h) => { const c = h.shadowRoot.querySelector('[data-prop="display"]'); c.click(); });
